@@ -1,0 +1,6 @@
+<SLM:component name="ZStudy_dev">
+    <SLM:command>/usr/bin/ZStudy</SLM:command>
+    <SLM:depend>none</SLM:depend>
+    <SLM:repair>none</SLM:repair>
+	<SLM:user>ZStudy:ZStudy</SLM:user>
+</SLM:component>
