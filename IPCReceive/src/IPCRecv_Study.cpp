@@ -7,6 +7,9 @@
 #include <sys/iofunc.h>
 #include <sys/dispatch.h>
 #include <sys/resmgr.h>
+#include <vector>
+#include <memory>
+#include <iostream>
 /*namespace and ipc*/
 #define ATTACH_POINT "ZStudy_AttachPoint"
 
@@ -24,6 +27,11 @@
 /*POSIX message queues*/
 /*The Func_MQSend is Client and responsible for send*/
 
+#define TESTSTRING "AAAAAAAAAA"
+
+void sigaction_handler(int signo);
+void sigaction_handler2(int signo);
+
 class Z_TestCases
 {
 public:
@@ -32,6 +40,75 @@ public:
 
 protected:
 private:
+};
+
+class memory_sync_test
+{
+public:
+    memory_sync_test()
+    {
+        fd = open("/usr/bin/Zfile_1.txt", O_CREAT | O_RDWR, 0777);
+        write(fd, TESTSTRING, sizeof(TESTSTRING));
+        lseek(fd, 0, SEEK_SET);
+        this->file_size = lseek(fd, 0, SEEK_END);
+        printf("Size of file = %d bytes\n", file_size);
+        addr = mmap(0, file_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                    fd, 0);
+
+        printf("ZStudy3 : memory_sync_test construct done\n");
+    }
+    ~memory_sync_test()
+    {
+    }
+
+    void sync_memory(void)
+    {
+        if (-1 == msync(this->addr, this->file_size, MS_SYNC))
+        {
+            printf("msync error\n");
+        }
+    }
+
+    void modify_memory(void)
+    {
+        memset(this->addr, 'B', this->file_size);
+    }
+
+private:
+    void *addr;
+    int fd;
+    int file_size;
+};
+
+class signal_test
+{
+public:
+    signal_test()
+    {
+        /*Sigaction*/
+        sigemptyset(&set);
+        sigaddset(&set, SIGUSR1);
+        sigaddset(&set, SIGUSR2);
+
+        act.sa_flags = 0;
+        act.sa_mask = set;
+        act.sa_handler = sigaction_handler;
+        sigaction(SIGUSR1, &act, NULL);
+
+        act2.sa_flags = 0;
+        act2.sa_mask = set;
+        act2.sa_handler = sigaction_handler2;
+        sigaction(SIGUSR2, &act2, NULL);
+    }
+
+    void signal_trigger(void)
+    {
+        kill(getpid(), SIGUSR1);
+    }
+
+private:
+    struct sigaction act, act2;
+    sigset_t set;
 };
 
 void Z_TestCases::Func_MQSend(void)
@@ -93,8 +170,15 @@ void sigaction_handler2(int signo)
 
 int main(int argc, char *argv[])
 {
+    using namespace std;
     Z_TestCases ZStudyTest;
     int ret;
+
+    /*-------memory sync test-------*/
+    memory_sync_test MMTEST;
+    MMTEST.modify_memory();
+    MMTEST.sync_memory();
+    printf("ZStudy3 : memory test done\n");
 
     pid_t pid;
 
@@ -108,7 +192,7 @@ int main(int argc, char *argv[])
         printf("ZStudy3 : child pid = %d\n", getpid());
         ZStudyTest.Process1s();
 
-        /*Share memory*/
+        /*-------Share memory test-------*/
         int fd;
         void *shareBuffer = NULL;
         int buffer[2];
@@ -126,7 +210,7 @@ int main(int argc, char *argv[])
         {
             printf("ZStudy3 : mmap failed\n");
         }
-        
+
         printf("ZStudy3 : shareBuffer[0]=%x, shareBuffer[1]=%x\n", *(int *)shareBuffer, *((int *)shareBuffer + 1));
 
         *(int *)shareBuffer = 0x0A;
@@ -142,25 +226,9 @@ int main(int argc, char *argv[])
         printf("ZStudy3 : parent pid = %d\n", getpid());
         ZStudyTest.Func_MQSend();
 
-        /*Sigaction*/
-        struct sigaction act, act2;
-        sigset_t set;
-
-        sigemptyset(&set);
-        sigaddset(&set, SIGUSR1);
-        sigaddset(&set, SIGUSR2);
-
-        act.sa_flags = 0;
-        act.sa_mask = set;
-        act.sa_handler = sigaction_handler;
-        sigaction(SIGUSR1, &act, NULL);
-
-        act2.sa_flags = 0;
-        act2.sa_mask = set;
-        act2.sa_handler = sigaction_handler2;
-        sigaction(SIGUSR2, &act2, NULL);
-
-        kill(getpid(), SIGUSR1);
+        /*-------sigaction test-------*/
+        signal_test SIGNALTEST;
+        SIGNALTEST.signal_trigger();
 
         printf("ZStudy3 : parent END\n");
 
